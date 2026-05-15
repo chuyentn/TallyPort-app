@@ -1,0 +1,146 @@
+<!-- 
+     FILE: css.html 
+     TallyPort Styling for AppScript Interface
+-->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+:root {
+  --bs-body-bg: #0f172a;
+  --bs-body-color: #f8fafc;
+}
+
+body {
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    font-family: 'Inter', sans-serif;
+}
+
+.card {
+    background: #1e293b;
+    border-radius: 16px;
+    color: white;
+}
+
+.illustration {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.btn-primary {
+    background: #10b981;
+    border: none;
+    font-weight: 700;
+}
+
+.btn-primary:hover {
+    background: #059669;
+}
+
+.list-group-item {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid rgba(255,255,255,0.05);
+}
+
+.list-group-item:hover {
+    background: #334155;
+    color: white;
+}
+
+.list-group-item.active {
+    background: #10b981;
+    border-color: #10b981;
+}
+
+table {
+    color: white !important;
+}
+
+thead th {
+    position: sticky;
+    top: -1px; /* Align with container */
+    background: #334155 !important;
+    z-index: 10;
+    box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.4);
+}
+
+.table-responsive {
+    max-height: 80vh; /* Allow scrolling within page */
+    overflow-y: auto;
+}
+
+.font-bold { font-weight: 700; }
+.uppercase { text-transform: uppercase; }
+
+.animate-bounce {
+  animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(-5%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); }
+  50% { transform: translateY(0); animation-timing-function: cubic-bezier(0, 0, 0.2, 1); }
+}
+
+.btn-xs {
+  padding: 0.1rem 0.25rem;
+  font-size: 0.65rem;
+  border-radius: 0.2rem;
+}
+
+.nav-link.active i {
+  color: #10b981;
+  transform: scale(1.2);
+}
+
+.nav-link.active span {
+  color: #10b981 !important;
+  font-weight: 900;
+}
+
+@media (max-width: 992px) {
+  .content-main {
+    padding-bottom: 80px; /* Space for bottom nav */
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #0f172a; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+
+/* Tối ưu dòng dữ liệu Tally */
+.data-row { transition: background 0.2s; border-bottom: 1px solid #1e293b !important; }
+.data-row:hover { background: rgba(16, 185, 129, 0.03) !important; }
+
+/* Dashboard Glassmorphism */
+#content-area .card { 
+  background: rgba(30, 41, 59, 0.7); 
+  backdrop-filter: blur(10px); 
+  border: 1px solid rgba(16, 185, 129, 0.1); 
+}
+
+/* Nút minh chứng & Trạng thái */
+.btn-emerald { background: #10b981; color: #fff; border: none; }
+.btn-emerald:hover { background: #059669; }
+.btn-outline-info { color: #0ea5e9; border-color: #0ea5e9; }
+.btn-outline-info:hover { background: #0ea5e9; color: #fff; }
+
+/* Table Inputs */
+input.form-control-sm, select.form-select-sm {
+  background: rgba(15, 23, 42, 0.8) !important;
+  color: #10b981 !important;
+  border: 1px solid rgba(16, 185, 129, 0.2) !important;
+  font-weight: 600;
+}
+input.form-control-sm:focus {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1) !important;
+}
+
+@media (max-width: 768px) {
+  .btn-group > .btn, .btn-sm { padding: 6px 10px; font-size: 13px; }
+  .data-card { margin-bottom: 12px; border-radius: 12px; border-left: 4px solid #10b981; }
+  .content-main { padding: 12px; }
+}
+</style>

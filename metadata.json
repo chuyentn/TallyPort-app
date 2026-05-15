@@ -1,0 +1,11 @@
+{
+  "name": "V2- TallyPort Nine Frontier",
+  "description": "Hệ thống quản lý Logistics xuất khẩu dăm gỗ: Quản lý phiếu cân, kiểm đếm (Tally), đối soát cước phí và Dashboard báo cáo thời gian thực.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

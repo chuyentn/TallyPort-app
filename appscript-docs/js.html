@@ -1,0 +1,753 @@
+<!-- 
+     FILE: js.html 
+     TallyPort Frontend Logic for AppScript Interface
+-->
+<script>
+let currentUser = null;
+let columnConfig = JSON.parse(localStorage.getItem('tp_col_cfg')) || {
+  'DS_XE': [0, 1, 2, 3, 4, 5, 6, 7] 
+};
+
+function saveConfig() {
+  localStorage.setItem('tp_col_cfg', JSON.stringify(columnConfig));
+}
+
+function login() {
+  const user = document.getElementById('username').value;
+  const pass = document.getElementById('password').value;
+  const btn = document.getElementById('loginBtn');
+  
+  if(!user || !pass) return alert('Vui lòng nhập đầy đủ');
+  
+  btn.disabled = true;
+  btn.innerText = 'ĐANG XÁC THỰC...';
+  
+  google.script.run
+    .withSuccessHandler(function(role) {
+      if(role !== 'invalid') {
+        currentUser = { email: user, role: role };
+        const display = document.getElementById('user-display');
+        const displayMobile = document.getElementById('user-display-mobile');
+        if(display) display.innerText = user;
+        if(displayMobile) displayMobile.innerText = user;
+        
+        document.getElementById('login-screen').classList.add('d-none');
+        document.getElementById('main-screen').classList.remove('d-none');
+        loadDashboard();
+      } else {
+        alert('Sai email hoặc mật khẩu');
+        btn.disabled = false;
+        btn.innerText = 'ĐĂNG NHẬP';
+      }
+    })
+    .withFailureHandler(function(err) {
+      alert('Lỗi kết nối: ' + err.message);
+      btn.disabled = false;
+      btn.innerText = 'ĐĂNG NHẬP';
+    })
+    .validateLogin(user, pass);
+}
+
+function logout() {
+  currentUser = null;
+  document.getElementById('username').value = '';
+  document.getElementById('password').value = '';
+  document.getElementById('login-screen').classList.remove('d-none');
+  document.getElementById('main-screen').classList.add('d-none');
+  // Close any open offcanvas/modals
+  const offcanvasEl = document.getElementById('mobileMenu');
+  const offcanvas = bootstrap.Offcanvas.getInstance(offcanvasEl);
+  if (offcanvas) offcanvas.hide();
+}
+
+function saveTallyField(el, rowIdx, colIdx, soPhieu, bienSo) {
+  const newVal = el.value.trim();
+  const oldVal = el.getAttribute('data-old') || "";
+  
+  if (newVal === oldVal && oldVal !== "") return; 
+  
+  el.classList.add('bg-warning', 'text-dark'); 
+  
+  const payload = {
+    rowIdx: rowIdx,
+    colIdx: colIdx,
+    value: newVal,
+    soPhieu: soPhieu,
+    bienSo: bienSo,
+    user: currentUser ? (currentUser.username || currentUser.email) : "Unknown"
+  };
+  
+  google.script.run
+    .withSuccessHandler(function() {
+       el.classList.remove('bg-warning', 'text-dark');
+       el.classList.add('bg-emerald-900', 'text-emerald-400');
+       el.setAttribute('data-old', newVal);
+       setTimeout(() => el.classList.remove('bg-emerald-900'), 2000);
+    })
+    .withFailureHandler(function(err) {
+       alert("Lỗi lưu: " + err.message);
+       el.classList.remove('bg-warning', 'text-dark');
+       el.classList.add('bg-danger');
+    })
+    .updateTallyField(payload);
+}
+
+function sendFullReport() {
+  const btn = event.target;
+  const original = btn.innerHTML;
+  const user = currentUser ? (currentUser.username || currentUser.email) : "Unknown";
+  
+  if (!confirm("Bạn có chắc chắn muốn gửi báo cáo tổng hợp hiện tại tới Telegram CEO không?")) return;
+  
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang gửi...';
+  btn.disabled = true;
+  
+  google.script.run
+    .withSuccessHandler(function(msg) {
+       alert(msg);
+       btn.innerHTML = original;
+       btn.disabled = false;
+    })
+    .withFailureHandler(function(err) {
+       alert("Lỗi: " + err.message);
+       btn.innerHTML = original;
+       btn.disabled = false;
+    })
+    .sendFullReportTelegram(user);
+}
+
+function loadDashboard() {
+  const area = document.getElementById('content-area');
+  area.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-emerald-500"></div></div>';
+  
+  google.script.run
+    .withSuccessHandler(function(summary) {
+      if (!summary) return;
+      
+      let progressHtml = summary.progress.map(p => `
+        <div class="col-12 col-md-6 mb-3">
+          <div class="card p-3 bg-slate-800/40 border-slate-700">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="fw-bold text-emerald-400">📍 HẦM ${p.ham}</span>
+              <span class="badge bg-emerald-500/20 text-emerald-400">${p.percent}%</span>
+            </div>
+            <div class="progress bg-slate-900 mb-2" style="height: 10px; border-radius: 5px;">
+              <div class="progress-bar bg-emerald-500 progress-bar-striped progress-bar-animated" style="width: ${p.percent}%"></div>
+            </div>
+            <div class="text-muted small d-flex justify-content-between">
+              <span>Thực tế: <b>${p.tons.toLocaleString()}</b></span>
+              <span>Kế hoạch: <b>${p.plan.toLocaleString()}</b></span>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      area.innerHTML = `
+        <div class="row g-3 animate-fade-in">
+          <!-- Main Stats -->
+          <div class="col-12 col-md-4">
+            <div class="card p-4 text-center h-100 bg-gradient-to-br from-emerald-900/20 to-slate-900 border-emerald-500/20">
+              <div class="text-muted small uppercase mb-1">Tiến độ tổng</div>
+              <div class="display-5 fw-black text-emerald-400">${summary.totalPercent}%</div>
+              <div class="progress mt-3 bg-slate-800" style="height: 4px;">
+                 <div class="progress-bar bg-emerald-500" style="width: ${summary.totalPercent}%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4">
+            <div class="card p-4 text-center h-100">
+              <div class="text-muted small uppercase mb-1">Sản lượng (Tấn)</div>
+              <div class="h2 fw-bold text-white">${summary.totalTons.toLocaleString()}</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4">
+            <div class="card p-4 text-center h-100">
+              <div class="text-muted small uppercase mb-1">Tổng xe lượt</div>
+              <div class="h2 fw-bold text-white">${summary.totalTrucks}</div>
+            </div>
+          </div>
+
+          <!-- Cargo Holds Detail -->
+          <div class="col-12 mt-4"><h6 class="fw-bold text-slate-400 uppercase tracking-widest"><i class="fas fa-ship me-2"></i>Chi tiết hầm bốc hàng</h6></div>
+          ${progressHtml}
+
+          <div class="col-12 mt-4">
+             <div class="d-grid gap-2">
+               <button class="btn btn-emerald py-3 fw-bold shadow-lg" onclick="showTab('TALLY_CHECK')">
+                 <i class="fas fa-tasks me-2"></i> ĐIỀU HÀNH TALLY NGAY
+               </button>
+               <button class="btn btn-outline-info py-3 fw-bold" onclick="sendFullReport()">
+                 <i class="fab fa-telegram-plane me-2"></i> GỬI BÁO CÁO TELEGRAM (CEO)
+               </button>
+             </div>
+          </div>
+        </div>
+      `;
+    })
+    .getDashboardSummary();
+}
+
+function closeMobileMenu(sheetName) {
+  const offcanvasEl = document.getElementById('mobileMenu');
+  const offcanvas = bootstrap.Offcanvas.getInstance(offcanvasEl);
+  if (offcanvas) offcanvas.hide();
+  showTab(sheetName);
+}
+
+function toggleColumn(sheetName, colIndex, totalCols) {
+  if(!columnConfig[sheetName]) {
+    columnConfig[sheetName] = [];
+    for(let i=0; i<totalCols; i++) columnConfig[sheetName].push(i);
+  }
+  const idx = columnConfig[sheetName].indexOf(colIndex);
+  if(idx > -1) {
+    columnConfig[sheetName].splice(idx, 1);
+  } else {
+    columnConfig[sheetName].push(colIndex);
+    columnConfig[sheetName].sort((a,b) => a - b);
+  }
+  saveConfig();
+  showTab(sheetName);
+}
+
+const headers = {
+    'PHIEU_CAN': ['STT', 'SO_PHIEU', 'BIEN_SO', 'KHACH_HANG', 'LOAI_HANG', 'TL_CAN_LAN_1', 'TL_CAN_LAN_2', 'TRU_BI', 'TL_HANG', 'NGAY_CAN_1', 'GIO_CAN_1', 'NGAY_CAN_2', 'GIO_CAN_2', 'KHO_HANG', 'GHI_CHU', 'HAM_SO', 'TRANG_THAI', 'TEN_NV', 'TAI_KHOAN', 'THOI_GIAN'],
+    'TALLY_CHECK': ['STT', 'SO_PHIEU', 'BIEN_SO', 'KHACH_HANG', 'LOAI_HANG', 'TL_CAN_LAN_1', 'TL_CAN_LAN_2', 'TRU_BI', 'TL_HANG', 'NGAY_CAN_1', 'GIO_CAN_1', 'NGAY_CAN_2', 'GIO_CAN_2', 'KHO_HANG', 'GHI_CHU', 'HAM_SO', 'TRANG_THAI', 'TEN_NV', 'TAI_KHOAN', 'THOI_GIAN', 'CA', 'TALLY_NOTE', 'MINH_CHUNG', 'CHECKED_BY', 'CHECKED_TIME'],
+    'BC_NHANH': ['HẦM SỐ', 'XE CONT', 'XE THÙNG', 'TỔNG XE', 'SAO VÀNG', 'NINH TÂY', 'KRÔNG BÔNG', ' KHÁNH ĐÔNG', 'TỔNG KH', 'KẾ HOẠCH', 'CHÊNH LỆCH', 'TIẾN ĐỘ %'],
+  'DS_XE': ['STT', 'BIỂN SỐ', 'ĐƠN VỊ', 'LOẠI XE', 'TÀI XẾ', 'ĐIỆN THOẠI', 'ĐƠN GIÁ', 'GHI CHÚ'],
+  'User': ['ID', 'TÊN', 'EMAIL', 'PASS', 'ẢNH', 'ROLE'],
+  'AUDIT_LOGS': ['ID', 'NGƯỜI DÙNG', 'VAI TRÒ', 'HÀNH ĐỘNG', 'THỰC THỂ', 'ID THỰC THỂ', 'THỜI GIAN'],
+  'INCIDENTS': ['THỜI GIAN', 'NGƯỜI GỬI', 'LOẠI', 'MÔ TẢ', 'LINK FILE', 'BIỂN SỐ/SỐ PHIẾU']
+};
+
+let currentTab = '';
+let refreshInterval = null;
+let viewType = localStorage.getItem('tp_view_type') || 'table'; // 'table' or 'card'
+
+function setViewType(type) {
+  viewType = type;
+  localStorage.setItem('tp_view_type', type);
+  if(currentTab) showTab(currentTab);
+}
+
+function showTab(sheetName) {
+  if (sheetName === 'DASHBOARD' || !sheetName) {
+    loadDashboard();
+    return;
+  }
+  currentTab = sheetName;
+  const area = document.getElementById('content-area');
+  area.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-emerald-500"></div><p class="mt-2 text-muted">Đang tải dữ liệu ' + sheetName + '...</p></div>';
+  
+  // Highlight active nav item
+  document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll(`.nav-link[onclick*="'${sheetName}'"]`).forEach(el => el.classList.add('active'));
+
+  google.script.run
+    .withSuccessHandler(function(data) {
+      const allHeaders = headers[sheetName] || [];
+      const visibleCols = columnConfig[sheetName] || allHeaders.map((_, i) => i);
+      const isDataEmpty = !data || data.length === 0;
+      
+      let html = `<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+                    <div>
+                      <h4 class="uppercase font-bold text-emerald-400 m-0">${sheetName}</h4>
+                      <div class="small text-muted" id="rowCountDisplay">Tải lúc: ${new Date().toLocaleTimeString()}</div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-grow-1 flex-md-grow-0">
+                       <div class="input-group input-group-sm d-none d-sm-flex" style="max-width: 200px;">
+                         <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-search"></i></span>
+                         <input type="text" id="searchInput" class="form-control bg-dark border-secondary text-white" placeholder="Tìm kiếm..." onkeyup="filterData()">
+                       </div>
+                       
+                       <div class="btn-group btn-group-sm ms-md-2">
+                         <button class="btn ${viewType === 'table' ? 'btn-emerald' : 'btn-outline-emerald'}" onclick="setViewType('table')"><i class="fas fa-table"></i></button>
+                         <button class="btn ${viewType === 'card' ? 'btn-emerald' : 'btn-outline-emerald'}" onclick="setViewType('card')"><i class="fas fa-th-large"></i></button>
+                       </div>
+
+                       <div class="form-check form-switch pt-1 mx-2 d-none d-md-block">
+                         <input class="form-check-input" type="checkbox" id="autoRefreshToggle" ${refreshInterval ? 'checked' : ''} onchange="toggleAutoRefresh(this)">
+                         <label class="form-check-label text-white small" for="autoRefreshToggle">Auto</label>
+                       </div>
+                       <button class="btn btn-sm btn-outline-info" onclick="showTab('${sheetName}')" title="Tải lại ngay"><i class="fas fa-sync"></i></button>
+                       <button class="btn btn-sm btn-outline-secondary d-md-none" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
+                    </div>`;
+      html += `</div>`;
+
+      // SEARCH BOX FOR MOBILE
+      html += `<div class="mb-3 d-sm-none">
+                 <div class="input-group input-group-sm">
+                   <span class="input-group-text bg-dark border-secondary text-muted"><i class="fas fa-search"></i></span>
+                   <input type="text" id="searchInputMobile" class="form-control bg-dark border-secondary text-white" placeholder="Tìm nhanh..." onkeyup="document.getElementById('searchInput').value=this.value; filterData();">
+                 </div>
+               </div>`;
+
+      if (viewType === 'table') {
+        html += '<div class="table-responsive rounded-3"><table id="dataTable" class="table table-dark table-hover table-bordered small align-middle mb-5 mb-md-0">';
+        html += '<thead><tr class="bg-dark">';
+        
+        allHeaders.forEach((h, i) => {
+          if(visibleCols.includes(i)) html += '<th>' + h + '</th>';
+        });
+        html += '<th class="text-center">THAO TÁC</th>';
+        html += '</tr></thead><tbody>';
+        
+        if (isDataEmpty) {
+          html += `<tr><td colspan="${visibleCols.length + 1}" class="text-center text-muted py-4"><i class="fas fa-inbox fa-2x mb-2"></i><br>Không có dữ liệu trong ${sheetName}</td></tr>`;
+        } else {
+          data.forEach((row, rowIndex) => {
+            html += '<tr class="data-row">';
+            row.forEach((cell, i) => {
+              if(visibleCols.includes(i)) {
+                let cellContent = (cell === null || cell === undefined ? '' : cell);
+                
+                // Custom handling for BC_NHANH percentage
+                if (sheetName === 'BC_NHANH' && i === 11) { // Index 11 is %
+                   const val = parseFloat(cell) || 0;
+                   const color = val >= 100 ? 'bg-success' : val > 90 ? 'bg-warning' : 'bg-info';
+                   cellContent = `<div class="progress" style="height: 12px; min-width: 60px;">
+                                    <div class="progress-bar ${color}" style="width: ${Math.min(val, 100)}%">${val.toFixed(0)}%</div>
+                                  </div>`;
+                }
+                
+                // Custom handling for Status in PHIEU_CAN
+                if (sheetName === 'PHIEU_CAN' && i === 16) {
+                  const color = cell === 'Đã duyệt' ? 'bg-success' : 'bg-warning';
+                  cellContent = `<span class="badge ${color}">${cell}</span>`;
+                }
+  
+                // Custom rendering for TALLY_CHECK Grid Edit (Tối ưu cho Tally Staff)
+                if (sheetName === 'TALLY_CHECK') {
+                  const soPhieu = row[1];
+                  const bienSo = row[2];
+                  const colIdx = i + 1;
+  
+                  if (colIdx === 16) { // CỘT HẦM
+                     cellContent = `<input type="number" 
+                                     class="form-control form-control-sm bg-slate-800/80 text-emerald-400 border-emerald-500/30 p-1 text-center fw-bold" 
+                                     style="width: 50px;"
+                                     value="${cell || ''}" 
+                                     placeholder="Hầm"
+                                     onblur="saveTallyField(this, ${rowIndex + 2}, ${colIdx}, '${soPhieu}', '${bienSo}')">`;
+                  } else if (colIdx === 21) { // CỘT CA
+                     const ca1 = cell == 1 ? 'selected' : '';
+                     const ca2 = cell == 2 ? 'selected' : '';
+                     const ca3 = cell == 3 ? 'selected' : '';
+                     cellContent = `<select class="form-select form-select-sm bg-slate-800/80 text-emerald-400 border-emerald-500/30 p-1 fw-bold" 
+                                      style="width: 55px;"
+                                      onchange="saveTallyField(this, ${rowIndex + 2}, ${colIdx}, '${soPhieu}', '${bienSo}')">
+                                      <option value="">---</option>
+                                      <option value="1" ${ca1}>C1</option>
+                                      <option value="2" ${ca2}>C2</option>
+                                      <option value="3" ${ca3}>C3</option>
+                                    </select>`;
+                  } else if (colIdx === 22) { // CỘT GHI CHÚ
+                     cellContent = `<input type="text" 
+                                     class="form-control form-control-sm bg-slate-800/80 text-emerald-400 border-emerald-500/30 p-1" 
+                                     style="min-width: 100px;"
+                                     value="${cell || ''}" 
+                                     placeholder="Ghi chú..."
+                                     onblur="saveTallyField(this, ${rowIndex + 2}, ${colIdx}, '${soPhieu}', '${bienSo}')">`;
+                  }
+                }
+  
+                // Custom handling for TALLY_CHECK media link
+                if (sheetName === 'TALLY_CHECK' && i === 22 && cellContent && cellContent.toString().startsWith('http')) {
+                  cellContent = `<a href="${cellContent}" target="_blank" class="btn btn-xs btn-outline-info">
+                                   <i class="fas fa-image"></i> Xem
+                                 </a>`;
+                }
+                
+                // Custom handling for INCIDENTS link file
+                if (sheetName === 'INCIDENTS' && i === 4 && cellContent && cellContent.toString().startsWith('http')) {
+                  cellContent = `<a href="${cellContent}" target="_blank" class="btn btn-xs btn-outline-warning">
+                                   <i class="fas fa-eye"></i> Xem File
+                                 </a>`;
+                }
+  
+                html += '<td>' + cellContent + '</td>';
+              }
+            });
+            
+            let actionButtons = getActionButtons(sheetName, rowIndex);
+            html += `<td class="text-center">${actionButtons}</td>`;
+            html += '</tr>';
+          });
+        }
+        
+        html += '</tbody></table></div>';
+      } else {
+        // CARD VIEW
+        html += '<div id="cardContainer" class="row g-3 pb-5 pb-md-0">';
+        if (isDataEmpty) {
+          html += `<div class="col-12"><div class="alert text-center alert-info"><i class="fas fa-inbox fa-2x mb-2"></i><br>Không có dữ liệu trong ${sheetName}</div></div>`;
+        } else {
+          data.forEach((row, rowIndex) => {
+            html += `<div class="col-12 col-md-6 col-lg-4 data-row">
+                      <div class="card h-100 shadow-sm border-secondary overflow-hidden">
+                        <div class="card-body p-3">
+                          <div class="d-flex justify-content-between mb-2 pb-2 border-bottom border-secondary">
+                            <span class="badge bg-dark border border-secondary text-muted">#${rowIndex + 1}</span>
+                            <div>${getActionButtons(sheetName, rowIndex, true)}</div>
+                          </div>
+                          <div class="row g-2">
+                             ${row.map((cell, i) => {
+                               if (!visibleCols.includes(i)) return '';
+                               
+                               let displayVal = cell === null || cell === undefined ? '-' : cell;
+                               
+                               // BC_NHANH % in card
+                               if (sheetName === 'BC_NHANH' && i === 11) {
+                                 const val = parseFloat(cell) || 0;
+                                 const color = val >= 100 ? 'bg-success' : val > 90 ? 'bg-warning' : 'bg-info';
+                                 displayVal = `<div class="progress mt-1" style="height: 10px;">
+                                                 <div class="progress-bar ${color}" style="width: ${Math.min(val, 100)}%"></div>
+                                               </div>
+                                               <div class="text-end small font-bold mt-1">${val.toFixed(1)}%</div>`;
+                               }
+  
+                               if (sheetName === 'TALLY_CHECK') {
+                                 const soPhieu = row[1];
+                                 const bienSo = row[2];
+                                 const colIdx = i + 1;
+                                 
+                                 if (i === 15) {
+                                   displayVal = `<input type="number" class="form-control form-control-sm bg-slate-800/80 text-emerald-400 border-emerald-500/30 p-1 text-center fw-bold w-100" value="${cell || ''}" placeholder="Hầm" onblur="saveTallyField(this, ${rowIndex + 2}, ${colIdx}, '${soPhieu}', '${bienSo}')">`;
+                                 } else if (i === 20) {
+                                   const ca1 = cell == 1 ? 'selected' : '';
+                                   const ca2 = cell == 2 ? 'selected' : '';
+                                   const ca3 = cell == 3 ? 'selected' : '';
+                                   displayVal = `<select class="form-select form-select-sm bg-slate-800/80 text-emerald-400 border-emerald-500/30 p-1 fw-bold w-100" onchange="saveTallyField(this, ${rowIndex + 2}, ${colIdx}, '${soPhieu}', '${bienSo}')">
+                                      <option value="">-</option><option value="1" ${ca1}>C1</option><option value="2" ${ca2}>C2</option><option value="3" ${ca3}>C3</option></select>`;
+                                 } else if (i === 21) {
+                                   displayVal = `<input type="text" class="form-control form-control-sm bg-slate-800/80 text-emerald-400 border-emerald-500/30 p-1 w-100" value="${cell || ''}" placeholder="Ghi chú..." onblur="saveTallyField(this, ${rowIndex + 2}, ${colIdx}, '${soPhieu}', '${bienSo}')">`;
+                                 } else if (i === 22 && displayVal.toString().startsWith('http')) {
+                                   displayVal = `<a href="${displayVal}" target="_blank" class="btn btn-xs btn-outline-info w-100 mt-1"><i class="fas fa-image"></i> Xem minh chứng</a>`;
+                                 }
+                               }
+                               
+                               // INCIDENTS media in card
+                               if (sheetName === 'INCIDENTS' && i === 4 && displayVal.toString().startsWith('http')) {
+                                 displayVal = `<a href="${displayVal}" target="_blank" class="btn btn-xs btn-outline-warning w-100 mt-1">
+                                                 <i class="fas fa-eye"></i> Xem sự cố
+                                               </a>`;
+                               }
+                               
+                               return `<div class="col-6 mb-2">
+                                         <div class="text-muted" style="font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">${allHeaders[i] || ''}</div>
+                                         <div class="small">${displayVal}</div>
+                                       </div>`;
+                             }).join('')}
+                          </div>
+                        </div>
+                      </div>
+                    </div>`;
+          });
+        }
+        html += '</div>';
+      }
+      
+      area.innerHTML = html;
+    })
+    .withFailureHandler(function(err) {
+      area.innerHTML = '<div class=\"alert alert-danger\">Lỗi tải dữ liệu: ' + err.message + '</div>';
+    })
+    .getSheetData(sheetName);
+}
+
+function getActionButtons(sheetName, rowIndex, isCompact = false) {
+  let btnClass = isCompact ? 'btn-xs' : 'btn-sm';
+  let actionButtons = `
+    <div class="btn-group ${isCompact ? '' : 'btn-group-sm'}">
+      <button class="btn btn-success" title="Sửa" onclick="editRow('${sheetName}', ${rowIndex + 2})"><i class="fas fa-edit"></i></button>
+      <button class="btn btn-danger" title="Xóa" onclick="deleteRow('${sheetName}', ${rowIndex + 2})"><i class="fas fa-trash"></i></button>
+    </div>
+  `;
+  
+  if (sheetName === 'PHIEU_CAN') {
+    actionButtons = `
+      <div class="btn-group ${isCompact ? '' : 'btn-group-sm'}">
+        <button class="btn btn-warning" title="Duyệt" onclick="approveRow(${rowIndex + 2})"><i class="fas fa-check-circle"></i> ${isCompact ? '' : 'Duyệt'}</button>
+        <button class="btn btn-success" onclick="editRow('${sheetName}', ${rowIndex + 2})"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-danger" onclick="deleteRow('${sheetName}', ${rowIndex + 2})"><i class="fas fa-trash"></i></button>
+      </div>
+    `;
+  }
+
+  if (sheetName === 'TALLY_CHECK') {
+    actionButtons = `
+      <div class="btn-group ${isCompact ? '' : 'btn-group-sm'}">
+        <button class="btn btn-info" title="Chụp ảnh/Video" onclick="triggerTallyUpload(${rowIndex + 2})"><i class="fas fa-camera"></i></button>
+        <button class="btn btn-success" onclick="editRow('${sheetName}', ${rowIndex + 2})"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-danger" onclick="deleteRow('${sheetName}', ${rowIndex + 2})"><i class="fas fa-trash"></i></button>
+      </div>
+    `;
+  }
+  return actionButtons;
+}
+
+function triggerTallyUpload(rowIdx) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*,video/*';
+  input.capture = 'environment';
+  
+  input.onchange = function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Kiểm tra kích thước file (GAS giới hạn payload ~50MB, nên để 25MB cho an toàn)
+    if (file.size > 25 * 1024 * 1024) {
+      return alert('File quá lớn (Tối đa 25MB). Vui lòng chọn file khác.');
+    }
+    
+    // Hiển thị trạng thái "Đang xử lý" ngay tại nút bấm của dòng đó
+    const rowEl = document.querySelector(`.data-row:nth-child(${rowIdx - 1})`);
+    const btn = rowEl ? rowEl.querySelector('button[onclick*="triggerTallyUpload"]') : null;
+    let oldBtnHtml = "";
+    if (btn) {
+      oldBtnHtml = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+      btn.disabled = true;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      const payload = {
+        rowIdx: rowIdx,
+        user: currentUser ? (currentUser.username || currentUser.email) : "Unknown",
+        fileName: file.name,
+        fileData: evt.target.result
+      };
+      
+      google.script.run
+        .withSuccessHandler(function(msg) {
+          if (btn) {
+            btn.innerHTML = '<i class="fas fa-check"></i>';
+            btn.classList.replace('btn-info', 'btn-success');
+          }
+          // Chỉ cập nhật tab nếu cần, hoặc để người dùng tự refresh để tiết kiệm data
+          setTimeout(() => showTab('TALLY_CHECK'), 1000);
+        })
+        .withFailureHandler(function(err) {
+          alert('Lỗi: ' + err.message);
+          if (btn) {
+            btn.innerHTML = oldBtnHtml;
+            btn.disabled = false;
+          }
+        })
+        .uploadTallyMedia(payload);
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
+function filterData() {
+  const input = document.getElementById('searchInput');
+  const filter = (input ? input.value : "").toUpperCase();
+  const rows = document.querySelectorAll('.data-row');
+  let visibleCount = 0;
+  
+  rows.forEach(row => {
+    const text = row.innerText.toUpperCase();
+    const isVisible = text.indexOf(filter) > -1;
+    row.classList.toggle('d-none', !isVisible);
+    if (isVisible) visibleCount++;
+  });
+
+  // Cập nhật số lượng hiển thị nếu có element
+  const countDisplay = document.getElementById('rowCountDisplay');
+  if (countDisplay) countDisplay.innerText = filter ? `Tìm thấy: ${visibleCount}` : `Tổng: ${rows.length}`;
+}
+
+function toggleAutoRefresh(el) {
+  if (el.checked) {
+    refreshInterval = setInterval(() => {
+      if (currentTab) showTab(currentTab);
+    }, 15000); // 15s refresh
+  } else {
+    if (refreshInterval) clearInterval(refreshInterval);
+    refreshInterval = null;
+  }
+}
+
+function editRow(sheet, rowIdx) {
+  const modalEl = document.getElementById('editModal');
+  let modalInstance = bootstrap.Modal.getInstance(modalEl);
+  if (!modalInstance) modalInstance = new bootstrap.Modal(modalEl);
+  
+  const body = document.getElementById('editModalBody');
+  const saveBtn = document.getElementById('saveBtn');
+  const title = document.getElementById('editModalLabel');
+  
+  title.innerText = 'Sửa dòng ' + rowIdx + ' - ' + sheet;
+  body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-info"></div><p class="mt-2 text-muted small">Đang lấy dữ liệu...</p></div>';
+  saveBtn.disabled = true;
+  saveBtn.innerHTML = 'Lưu thay đổi';
+  modalInstance.show();
+
+  google.script.run
+    .withSuccessHandler(function(row) {
+      if(!row) {
+        body.innerHTML = '<div class="alert alert-warning">Không tìm thấy dữ liệu</div>';
+        return;
+      }
+      
+      const currentHeaders = headers[sheet] || [];
+      let html = '<form id="mobileEditForm" class="row g-3 pe-2">';
+      
+      row.forEach((val, i) => {
+        const label = currentHeaders[i] || ('Cột ' + (i + 1));
+        const isReadonly = (i === 19 && sheet === 'PHIEU_CAN') || (i === 0);
+        html += `<div class="col-12">
+                   <label class="small text-emerald-400 fw-bold mb-1">${label}</label>
+                   <input type="text" name="col_val" value="${val === null || val === undefined ? '' : val}" 
+                          ${isReadonly ? 'readonly disabled' : ''} 
+                          class="form-control form-control-sm bg-dark text-white border-secondary">
+                 </div>`;
+      });
+      
+      html += '</form>';
+      body.innerHTML = html;
+      saveBtn.disabled = false;
+      
+      saveBtn.onclick = function() {
+        saveMobileEdit(sheet, rowIdx, modalInstance);
+      };
+    })
+    .withFailureHandler(function(err) {
+      body.innerHTML = '<div class="alert alert-danger">Lỗi: ' + err.message + '</div>';
+    })
+    .getSelectedRow(sheet, rowIdx);
+}
+
+function saveMobileEdit(sheet, rowIdx, modalInstance) {
+  const form = document.getElementById('mobileEditForm');
+  if (!form) return alert('Không tìm thấy form chỉnh sửa');
+  
+  const inputs = form.querySelectorAll('input[name="col_val"]');
+  const values = Array.from(inputs).map(input => input.value);
+  const saveBtn = document.getElementById('saveBtn');
+  
+  saveBtn.disabled = true;
+  saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Đang lưu...';
+  
+  console.log("Saving row:", rowIdx, "in", sheet, values);
+  
+  google.script.run
+    .withSuccessHandler(function(msg) {
+       console.log("Save successful:", msg);
+       saveBtn.innerHTML = '<i class="fas fa-check"></i> Xong!';
+       saveBtn.classList.replace('btn-emerald', 'btn-success');
+       setTimeout(() => {
+         modalInstance.hide();
+         saveBtn.classList.replace('btn-success', 'btn-emerald');
+         saveBtn.innerHTML = 'Lưu thay đổi';
+         saveBtn.disabled = false;
+         showTab(sheet);
+       }, 800);
+    })
+    .withFailureHandler(function(err) {
+       console.error("Save failed:", err);
+       alert('Lỗi lưu: ' + err.message);
+       saveBtn.disabled = false;
+       saveBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Thử lại';
+    })
+    .updateRowInSheet(sheet, rowIdx, values, currentUser ? (currentUser.username || currentUser.email) : "Unknown");
+}
+
+function deleteRow(sheet, rowIdx) {
+  if(!confirm('Bạn có chắc muốn xóa dòng ' + rowIdx + '?')) return;
+  google.script.run
+    .withSuccessHandler(() => {
+       alert('Đã xóa thành công!');
+       showTab(sheet);
+    })
+    .deleteRowFromSheet(sheet, rowIdx, currentUser ? currentUser.email : "Unknown");
+}
+function approveRow(rowIdx) {
+  if(!confirm('Bạn có chắc muốn duyệt phiếu này sang Tally Check?')) return;
+  google.script.run
+    .withSuccessHandler((msg) => {
+       alert(msg);
+       showTab('PHIEU_CAN');
+    })
+    .withFailureHandler((err) => {
+       alert('Lỗi: ' + err.message);
+    })
+    .approvePhieuCan(rowIdx, currentUser ? currentUser.email : "Unknown");
+}
+
+function sendIncident() {
+  const btn = document.getElementById('sendIncidentBtn');
+  const fileInput = document.getElementById('incFile');
+  const type = document.getElementById('incType').value;
+  const desc = document.getElementById('incDesc').value;
+  const ref = document.getElementById('incRef').value;
+  
+  if(!desc) return alert('Vui lòng nhập mô tả sự cố');
+  
+  const file = fileInput.files[0];
+  if (file && file.size > 25 * 1024 * 1024) {
+    return alert('File quá lớn (Tối đa 25MB). Vui lòng nén ảnh hoặc quay video ngắn hơn.');
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Đang xử lý...';
+  
+  const payload = {
+    user: currentUser ? (currentUser.username || currentUser.email) : "Unknown",
+    type: type,
+    description: desc,
+    ref: ref,
+    fileName: "",
+    fileData: null
+  };
+
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      payload.fileData = e.target.result;
+      payload.fileName = file.name;
+      submitIncident(payload);
+    };
+    reader.onerror = function() {
+      alert('Lỗi đọc file từ thiết bị');
+      btn.disabled = false;
+      btn.innerHTML = 'Gửi báo cáo';
+    };
+    reader.readAsDataURL(file);
+  } else {
+    submitIncident(payload);
+  }
+}
+
+function submitIncident(payload) {
+  const btn = document.getElementById('sendIncidentBtn');
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Đang tải lên AppScript...';
+  
+  google.script.run
+    .withSuccessHandler(function(msg) {
+      alert(msg);
+      const modalEl = document.getElementById('incidentModal');
+      const modal = bootstrap.Modal.getInstance(modalEl);
+      if (modal) modal.hide();
+      document.getElementById('incidentForm').reset();
+      btn.disabled = false;
+      btn.innerHTML = 'Gửi báo cáo';
+    })
+    .withFailureHandler(function(err) {
+      console.error("Incident Error:", err);
+      const errMsg = err.message || "";
+      if (errMsg.includes("too large") || errMsg.includes("request entity too large")) {
+        alert('Lỗi: File quá lớn để truyền qua AppScript. Vui lòng giảm kích thước file.');
+      } else {
+        alert('Lỗi hệ thống: ' + errMsg);
+      }
+      btn.disabled = false;
+      btn.innerHTML = 'Thử lại';
+    })
+    .uploadIncidentFile(payload);
+}
+</script>
