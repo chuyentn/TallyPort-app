@@ -35,21 +35,77 @@ export default function Login() {
         return;
       }
 
-      const response = await api.post('/auth/login', { username, password });
-      
-      if (response.data.success) {
-        const { user } = response.data;
-        login('real-gsheets-token', user);
+      try {
+        const response = await api.post('/auth/login', { username, password });
         
-        // Redirect according to role
-        if (user.role === 'tally_staff') {
-          navigate('/tally');
+        if (response.data.success) {
+          const { user } = response.data;
+          login('real-gsheets-token', user);
+          
+          if (user.role === 'tally_staff') {
+            navigate('/tally');
+          } else {
+            navigate('/');
+          }
+          return;
         } else {
-          navigate('/');
+          throw new Error(response.data.message || 'Đăng nhập thất bại');
         }
-      } else {
-        setError(response.data.message || 'Đăng nhập thất bại');
+      } catch (apiError: any) {
+        // Fallback for statically hosted frontend (e.g. Cloudflare Pages) where backend is not running
+        const isNetworkOrStaticError = !apiError.response || apiError.response.status === 404 || apiError.response.status === 405 || apiError.message.includes('Network Error');
+        
+        if (isNetworkOrStaticError) {
+          console.warn("Backend unaccessible (static mode), attempting offline demo login...");
+          
+          // Demo Accounts
+          const demoAccounts: Record<string, any> = {
+            'admin-test': { name: 'Admin Test', role: 'admin', pass: 'test@1234' },
+            'quanly-test': { name: 'Chuyền QL Test', role: 'supervisor', pass: 'test@1234' },
+            'tally-test': { name: 'Chuyền Tally Test', role: 'tally_staff', pass: 'test@1234' },
+            'admin': { name: 'Admin Phú An', role: 'admin', pass: '1234' },
+            'hoatv': { name: 'Quản Lý Hòa', role: 'supervisor', pass: '1234' },
+            'tally-pa': { name: 'Tally Phú An', role: 'tally_staff', pass: 'sv@1234' },
+            'ha-tally': { name: 'Bích Hà', role: 'tally_staff', pass: 'sv@1234' },
+            'hung-tally': { name: 'Hưng (Tally)', role: 'tally_staff', pass: 'sv@1234' },
+            'tally3': { name: 'Tally 3', role: 'tally_staff', pass: 'sv@1234' },
+            'tally4': { name: 'Tally 4', role: 'tally_staff', pass: 'sv@1234' },
+            'ngoc-lam-sv': { name: 'Bàn Cân 1', role: 'supervisor', pass: 'sv@1234' },
+            'hong-lam-sv': { name: 'Bàn Cân 2', role: 'supervisor', pass: 'sv@1234' },
+            'nang-sv': { name: 'Bàn Cân 3', role: 'supervisor', pass: 'sv@1234' },
+            'qui-sv': { name: 'Bàn Cân 4', role: 'supervisor', pass: 'sv@1234' },
+            'ly-kd': { name: 'Bàn Cân 5', role: 'supervisor', pass: 'sv@1234' }
+          };
+
+          const acc = demoAccounts[username];
+          if (acc && password === acc.pass) {
+            const demoUser = {
+              id: `demo-${username}`,
+              username: username,
+              full_name: acc.name,
+              role: acc.role as any,
+              email: `${username}@demo.tallyport.com`
+            };
+            login('demo-token', demoUser);
+            
+            if (acc.role === 'tally_staff') {
+              navigate('/tally');
+            } else {
+              navigate('/');
+            }
+            return;
+          }
+          
+          if (acc && password !== acc.pass) {
+             throw new Error('Sai mật khẩu Demo');
+          }
+          
+          throw new Error('Không thể kết nối máy chủ và tài khoản offline không tồn tại');
+        }
+        
+        throw apiError;
       }
+
     } catch (err: any) {
       console.error('Login Error:', err);
       const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Không thể kết nối máy chủ';
@@ -152,11 +208,6 @@ export default function Login() {
             )}
           </button>
           
-          <div className="pt-2 text-center">
-            <p className="text-xs text-zinc-400">
-              * Sự cố kết nối? Sử dụng <span className="font-bold">admin / admin</span> để vào chế độ khẩn cấp.
-            </p>
-          </div>
         </form>
 
         <div className="p-6 bg-zinc-50 border-t border-zinc-100 text-center">
